@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook
+  template:
+    metadata:
+      labels:
+        app: webhook
+    spec:
+      containers:
+      - name: webhook
+        image: $USER.azurecr.io/webhook:latest
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8443
+            scheme: HTTPS
+        volumeMounts:
+        - name: certs
+          mountPath: /tls.crt
+          subPath: tls.crt
+        - name: certs
+          mountPath: /tls.key
+          subPath: tls.key
+      volumes:
+      - name: certs
+        secret:
+          secretName: webhook
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook
+spec:
+  selector:
+    app: webhook
+  ports:
+  - protocol: TCP
+    port: 443
+    targetPort: 8443
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: webhook
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    caBundle: $CA_BUNDLE
+    service:
+      namespace: default
+      name: webhook
+  failurePolicy: Ignore
+  matchPolicy: Equivalent
+  name: webhook.minter.uk
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods/eviction
+    scope: Namespaced
+  sideEffects: None
